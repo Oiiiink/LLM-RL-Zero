@@ -33,6 +33,14 @@ class Qwen2Config:
     vocab_size: int = 151936
 
 
+class ValueHead(torch.nn.Module):
+    def __init__(self, dim: int=2048):
+        super.__init__()
+        self.layer = nn.Linear(dim, 1)
+        
+    def forward(self, x: torch.Tensor):
+        return self.layer(x)
+
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
         super().__init__()
@@ -249,7 +257,7 @@ class Transformer(nn.Module):
         else:
             return self.lm_head(x)
 
-    def forward(self, tokens: torch.Tensor):
+    def forward_hiddens(self, tokens: torch.Tensor):
         _bsz, seqlen = tokens.shape
         h = self.embed_tokens(tokens)
         pos = torch.arange(0, seqlen, device=tokens.device, dtype=torch.int32)
@@ -259,10 +267,13 @@ class Transformer(nn.Module):
         for layer in self.layers:
             pipe.append(lambda x, layer=layer: layer(x, pos_emb))
         pipe.append(self.norm.forward)
-        pipe.append(self.output_proj)
         return torch.utils.checkpoint.checkpoint_sequential(
             pipe, len(pipe), h, use_reentrant=False
         )
+        
+    def forward(self, tokens: torch.Tensor):
+        
+        return self.output_proj(self.forward_hiddens(tokens))
 
     def inference(self, tokens: torch.Tensor, start_pos: Union[int, torch.Tensor]):
         _bsz, seqlen = tokens.shape

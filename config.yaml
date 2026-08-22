@@ -23,3 +23,11 @@ training:
   ckpt_save_interval: 100
   eval_interval: 10
   memory_efficient_adamw: false
+  gamma: 0.99
+  epsilon: 0.2
+  lambda: 0.95
+  gae_k: 10
+  num_epochs: 1
+  coeff_vf: 
+  coeff_en: 0.01
+  algorithm: "reinforce"

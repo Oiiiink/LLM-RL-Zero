@@ -1,3 +1,12 @@
+# xurt
+examples/
+test.ipynb
+TODO.md
+.pi-subagents/
+old/
+Qwen2.5-3B-Instruct
+Countdown-Tasks-3to4
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

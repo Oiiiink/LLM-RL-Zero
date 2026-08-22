@@ -11,9 +11,10 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from countdown_task import CountdownTasksDataset, reward_function
-from grpo import rollout, update_policy
+from algorithms.grpo import update_policy
+from rollout import rollout
 from optimizer import MemoryEfficientAdamW
-from qwen2_model import Transformer
+from qwen2_model import Transformer, ValueHead
 from tokenizer import Tokenizer
 
 
@@ -50,6 +51,52 @@ def evaluate(model, tokenizer, device, dtype, config):
         success.extend([episode.reward_info["answer_reward"] for episode in episodes])
     return np.mean(success)
 
+def construct_hyper(config: dict, pad_token_id: int) -> dict:
+    training = config["training"]
+    algorithm = training["algorithm"].lower()
+
+    defaults = {
+        "gamma": 0.99,
+        "num_epochs": 1,
+        "epsilon": 0.2,
+        "lambda": 0.95,
+        "gae_k": 10,
+        "coeff_vf": 0.5,
+        "coeff_en": 0.01,
+    }
+    algorithm_keys = {
+        "reinforce": ("gamma","coeff_vf", "coeff_en"),
+        "ppo": (
+            "gamma",
+            "num_epochs",
+            "epsilon",
+            "lambda",
+            "gae_k",
+            "coeff_vf",
+            "coeff_en",
+        ),
+        "grpo": ("gamma", "num_epochs", "epsilon", "coeff_en"),
+    }
+    if algorithm not in algorithm_keys:
+        supported = ", ".join(algorithm_keys)
+        raise ValueError(
+            f"Unsupported training algorithm {algorithm!r}; expected one of: {supported}"
+        )
+    if pad_token_id is None:
+        raise ValueError("The tokenizer must define a pad_token_id")
+
+    hyper_params = {
+        "micro_batch_size": training["micro_batch_size"],
+        "pad_token_id": pad_token_id,
+        "max_grad_norm": training["max_grad_norm"],
+    }
+    hyper_params.update(
+        {
+            key: training.get(key, defaults[key])
+            for key in algorithm_keys[algorithm]
+        }
+    )
+    return hyper_params
 
 def main(config_path: str):
     with open(config_path, "r") as f:
@@ -89,6 +136,7 @@ def main(config_path: str):
     )
 
     model = Transformer.from_pretrained(pretrained_model_path, device=device).train()
+    value_head = ValueHead() if config["training"]["algorithm"] in ["reinforce", "ppo"] else None
 
     optimizer = MemoryEfficientAdamW(
         model.parameters(),
@@ -117,11 +165,10 @@ def main(config_path: str):
             episodes = [episode for episode in episodes if episode.is_finished]
         results = update_policy(
             model=model,
+            value_head=value_head,
             optimizer=optimizer,
             episodes=episodes,
-            micro_batch_size=config["training"]["micro_batch_size"],
-            pad_token_id=tokenizer.pad_token_id,
-            max_grad_norm=config["training"]["max_grad_norm"],
+            hyper_params=construct_hyper(config, tokenizer.pad_token_id),
             device=device,
             dtype=dtype,
         )
