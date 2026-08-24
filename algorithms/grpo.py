@@ -78,24 +78,23 @@ def update_policy(
             # move to gpu
             batch_final_rewards = torch.tensor(batch_final_rewards, dtype=torch.float32, device=device)
             batch_token_ids = torch.tensor(batch_token_ids, dtype=torch.long, device=device)
-            batch_masks = torch.tensor(batch_masks, dtype=torch.bool, device=device)
+            batch_masks = torch.tensor(batch_masks[:, 1:], dtype=torch.bool, device=device)
             
             with torch.autocast(device_type=device, dtype=dtype):
                 batch_logits = model.forward(batch_token_ids)
                 
             batch_count = batch_masks.reshape(-1).sum()
-            with torch.no_grad:
-                batch_token_entropy = compute_entropy(batch_logits)
-                entropy += (
-                    batch_token_entropy.reshape(-1) * batch_masks.reshape(-1)
-                ).sum() / batch_count
+            batch_token_entropy = compute_entropy(batch_logits)
+            entropy = (
+                batch_token_entropy.reshape(-1) * batch_masks.reshape(-1)
+            ).sum() / batch_count
                 
             B, S, V = batch_logits.shape
             batch_rewards = get_rewards(batch_final_rewards, batch_token_ids, pad_token_id)
             batch_advantages = get_returns(batch_rewards, gamma)
             
             batch_target = batch_token_ids[:, 1:]
-            log_probs = torch.nn.functional.cross_entropy(batch_logits, batch_target, reduction='none', ignore_index=pad_token_id)
+            log_probs = -torch.nn.functional.cross_entropy(batch_logits, batch_target, reduction='none', ignore_index=pad_token_id)
             batch_old_log_probs = torch.tensor(old_log_probs[i:j], dtype=torch.float32, device=device)
             ratio = torch.exp(log_probs - batch_old_log_probs)
             clipped_ratio = torch.clamp(ratio, 1-eps, 1+eps)
@@ -107,9 +106,8 @@ def update_policy(
             batch_loss = -objective
             batch_loss.backward()
             
-            loss += batch_loss
+            loss += batch_loss.detach()
             
-        
         grad_norm = torch.nn.utils.clip_grad_norm_(
             model.parameters(),
             max_norm=max_grad_norm

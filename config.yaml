@@ -27,7 +27,7 @@ training:
   epsilon: 0.2
   lambda: 0.95
   gae_k: 10
-  num_epochs: 1
-  coeff_vf: 
+  num_epochs: 5
+  coeff_vf: 0.05
   coeff_en: 0.01
-  algorithm: "reinforce"
+  algorithm: "grpo"

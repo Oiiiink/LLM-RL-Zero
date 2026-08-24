@@ -35,11 +35,11 @@ class Qwen2Config:
 
 class ValueHead(torch.nn.Module):
     def __init__(self, dim: int=2048):
-        super.__init__()
+        super().__init__()
         self.layer = nn.Linear(dim, 1)
         
     def forward(self, x: torch.Tensor):
-        return self.layer(x)
+        return self.layer(x).squeeze(-1)
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):

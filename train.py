@@ -137,9 +137,11 @@ def main(config_path: str):
 
     model = Transformer.from_pretrained(pretrained_model_path, device=device).train()
     value_head = ValueHead() if config["training"]["algorithm"] in ["reinforce", "ppo"] else None
+    print(f"model parameters: {sum(param.numel() for param in model.parameters())}")
+    print(f"value head parameters: {sum(param.numel() for param in value_head.parameters())}")
 
     optimizer = MemoryEfficientAdamW(
-        model.parameters(),
+        [model.parameters(), value_head.parameters()],
         lr=config["training"]["learning_rate"],
         weight_decay=config["training"]["weight_decay"],
         betas=config["training"]["betas"],

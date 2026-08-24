@@ -7,7 +7,7 @@ def compute_gae(rewards: torch.Tensor, values: torch.Tensor,
                 gamma=1, _lambda=0.01, k=7):
     delta = rewards + gamma * values[:, 1:] - values[:, :-1]
     B, S = delta.shape
-    delta_expanded = torch.cat(delta, torch.zeros(B, k-1), dim=1)
+    delta_expanded = torch.cat([delta, delta.new_zeros(B, k-1)], dim=1)
     windows = delta_expanded.unfold(dimension=1, size=k, step=1)
     weights = (gamma * _lambda) ** torch.arange(k, dtype=delta_expanded.dtype, device=delta_expanded.device)
     gae = windows @ weights
@@ -72,7 +72,7 @@ def update_policy(
             # move to gpu
             batch_final_rewards = torch.tensor(batch_final_rewards, dtype=torch.float32, device=device)
             batch_token_ids = torch.tensor(batch_token_ids, dtype=torch.long, device=device)
-            batch_masks = torch.tensor(batch_masks, dtype=torch.bool, device=device)
+            batch_masks = torch.tensor(batch_masks[:, 1:], dtype=torch.bool, device=device)
             
             with torch.autocast(device_type=device, dtype=dtype):
                 batch_hiddens = model.forward_hiddens(batch_token_ids) # (B, S+1)
@@ -80,11 +80,10 @@ def update_policy(
                 batch_values = value_head(batch_hiddens).float() # (B, S+1)
                 
             batch_count = batch_masks.reshape(-1).sum()
-            with torch.no_grad:
-                batch_token_entropy = compute_entropy(batch_logits)
-                entropy += (
-                    batch_token_entropy.reshape(-1) * batch_masks.reshape(-1)
-                ).sum() / batch_count
+            batch_token_entropy = compute_entropy(batch_logits)
+            entropy = (
+                batch_token_entropy.reshape(-1) * batch_masks.reshape(-1)
+            ).sum() / batch_count
                 
             B, S, V = batch_logits.shape
             batch_rewards = get_rewards(batch_final_rewards, batch_token_ids, pad_token_id)
@@ -92,22 +91,21 @@ def update_policy(
             batch_advantages = compute_gae(batch_rewards, batch_values, gamma, _lambda, gae_k)
             
             batch_target = batch_token_ids[:, 1:]
-            log_probs = torch.nn.functional.cross_entropy(batch_logits, batch_target, reduction='none', ignore_index=pad_token_id)
+            log_probs = -torch.nn.functional.cross_entropy(batch_logits, batch_target, reduction='none', ignore_index=pad_token_id)
             batch_old_log_probs = torch.tensor(old_log_probs[i:j], dtype=torch.float32, device=device)
             ratio = torch.exp(log_probs - batch_old_log_probs)
             clipped_ratio = torch.clamp(ratio, 1-eps, 1+eps)
             
             policy_objective = (torch.min(ratio * batch_advantages, clipped_ratio * batch_advantages) * batch_masks).sum() / batch_count
-            vf_loss = 0.5 * (batch_returns - batch_values[:, :-1]) ** 2
+            vf_loss = ((0.5 * (batch_returns - batch_values[:, :-1]) ** 2) * batch_masks).sum() / batch_count
             
             objective = policy_objective - coeff_vf * vf_loss + coeff_en * entropy
             
             batch_loss = -objective
             batch_loss.backward()
             
-            loss += batch_loss
+            loss += batch_loss.detach()
             
-        
         grad_norm = torch.nn.utils.clip_grad_norm_(
             model.parameters(),
             max_norm=max_grad_norm

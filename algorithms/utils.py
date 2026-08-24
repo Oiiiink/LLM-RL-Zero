@@ -58,6 +58,6 @@ def get_returns(rewards: torch.Tensor, gamma: float):
     weights = gamma ** torch.arange(S, dtype=rewards.dtype, device=rewards.device)
     weights = torch.nn.functional.pad(weights, (S-1, 0)).unfold(0, S, 1).flip(0)
     
-    returns = (weights[None, :, :] * rewards).sum(dim=1)
+    returns = (weights[None, :, :] * rewards[:, :, None]).sum(dim=1)
     
     return returns

@@ -1,15 +1,17 @@
 # GRPO:Zero
 
-GRPO training with minimal dependencies (and low GPU memory usage!). We implement almost everything from scratch and only depend on `tokenizers` for tokenization and `pytorch` for training. 
-- No `transformers` and `vLLM` dependencies! 
-- The default config is set to run on a single A40 GPU (48GB VRAM) for a few hours to get good results. (An A40 costs `$0.44` per hour if you rent it from RunPod.)
+GRPO training with minimal dependencies (and low GPU memory usage!). We implement almost everything from scratch and only depend on `tokenizers` for tokenization and `pytorch` for training.
+
+- No `transformers` and `vLLM` dependencies!
+- The defau
+- lt config is set to run on a single A40 GPU (48GB VRAM) for a few hours to get good results. (An A40 costs `$0.44` per hour if you rent it from RunPod.)
 - We also support training with a 24GB VRAM GPU (e.g., an RTX 4090 GPU) by offloading the optimizer to CPU. Fortunately, this only adds a small overhead to the training because we only update the policy network a few hundred times during the entire training process.
 - We support several improvements over the original GRPO algorithm from the [DAPO project](https://arxiv.org/abs/2503.14476), including:
-    - **Token-level policy gradient loss**: every token is equally weighted in the policy gradient loss.
-    - **Removing KL Divergence**: the KL divergence is not used in the policy gradient loss. This reduces GPU memory usage as we no longer need the reference policy network.
-    - **Overlong episode filtering**: skips unfinished episodes that exceed context length limits. This stabilizes training. Though we disabled it by default to observe model learning under limited context length. Set `skip_unfinished_episodes` to `true` to enable it.
+  - **Token-level policy gradient loss**: every token is equally weighted in the policy gradient loss.
+  - **Removing KL Divergence**: the KL divergence is not used in the policy gradient loss. This reduces GPU memory usage as we no longer need the reference policy network.
+  - **Overlong episode filtering**: skips unfinished episodes that exceed context length limits. This stabilizes training. Though we disabled it by default to observe model learning under limited context length. Set `skip_unfinished_episodes` to `true` to enable it.
 
-## Algorithm 
+## Algorithm
 
 Group Relative Policy Optimization (GRPO) is an algorithm proposed by Deepseek for training large language models with reinforcement learning. The idea is simple: for each question, we randomly sample multiple answers. The advantage of an answer is then defined as the normalized reward. This gets rid of the value estimation network. In particular, we implement the following algorithm:
 
@@ -27,7 +29,9 @@ $$
 
 5. For each token $t$ in the answer $a_{i,j}$, compute the advantage as
 
-$$A_{i,j}[t] \leftarrow \frac{r_{i,j} - \mu_i}{\sigma_i}$$
+$$
+A_{i,j}[t] \leftarrow \frac{r_{i,j} - \mu_i}{\sigma_i}
+$$
 
 6. Compute policy gradient using PPO surrogate objective. For simplicity, we will only do one policy update per iteration, in which the gradient of the PPO objective is equivalent to following vanilla policy gradient estimation (per token).
 
@@ -60,7 +64,6 @@ The reward is the sum of two components:
 1. **Format Reward**: The model earns a reward of `0.1` when it correctly follows the specified format with thinking and answer tags, and `0` otherwise.
 2. **Answer Reward**: The model receives a reward of `1` if its final answer uses each provided number exactly once and correctly evaluates to the target value, otherwise it receives `0`.
 
-
 ## Training
 
 We use the `Qwen2.5-3B-Instruct` model for training. To train the model, run the following commands:
@@ -83,6 +86,7 @@ uv run train.py
 # train the model with a 24GB VRAM GPU (e.g., an RTX 4090 GPU)
 uv run train.py --config config_24GB.yaml
 ```
+
 ## Acknowledgements
 
 This project builds upon the work of several outstanding projects:

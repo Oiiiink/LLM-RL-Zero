@@ -51,7 +51,7 @@ def update_policy(
         # move to GPU
         batch_final_rewards = torch.tensor(batch_final_rewards, dtype=torch.float32, device=device)
         batch_token_ids = torch.tensor(batch_token_ids, dtype=torch.long, device=device)
-        batch_masks = torch.tensor(batch_masks, dtype=torch.bool, device=device)
+        batch_masks = torch.tensor(batch_masks[:, 1:], dtype=torch.bool, device=device)
         
         # forward pass
         with torch.autocast(device_type=device.type, dtype=dtype):
@@ -73,11 +73,10 @@ def update_policy(
         )
         
         batch_count = batch_masks.reshape(-1).sum()
-        with torch.no_grad:
-            batch_token_entropy = compute_entropy(batch_logits)
-            entropy += (
-                batch_token_entropy.reshape(-1) * batch_masks.reshape(-1)
-            ).sum() / batch_count
+        batch_token_entropy = compute_entropy(batch_logits)
+        entropy = (
+            batch_token_entropy.reshape(-1) * batch_masks.reshape(-1)
+        ).sum() / batch_count
         
         # calculate loss
         assert batch_logits.shape == batch_masks.shape == batch_log_probs.shape, f"{batch_logits.shape} == {batch_masks.shape} == {batch_log_probs.shape}"

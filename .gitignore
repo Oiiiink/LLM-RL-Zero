@@ -4,8 +4,11 @@ test.ipynb
 TODO.md
 .pi-subagents/
 old/
-Qwen2.5-3B-Instruct
-Countdown-Tasks-3to4
+Qwen2.5-3B-Instruct/
+Countdown-Tasks-3to4/
+logs/
+mutagen.yml
+mutagen.yml.lock
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
