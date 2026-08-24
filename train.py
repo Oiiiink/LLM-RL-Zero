@@ -11,7 +11,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from countdown_task import CountdownTasksDataset, reward_function
-from algorithms.grpo import update_policy
 from rollout import rollout
 from optimizer import MemoryEfficientAdamW
 from qwen2_model import Transformer, ValueHead
@@ -98,6 +97,18 @@ def construct_hyper(config: dict, pad_token_id: int) -> dict:
     )
     return hyper_params
 
+def select_update_policy(algorithm: str):
+    if algorithm == "reinforce":
+        from algorithms.reinforce import update_policy
+    elif algorithm ==  "ppo":
+        from algorithms.ppo import update_policy
+    elif algorithm == "grpo":
+        from algorithms.grpo import update_policy
+    else :
+        raise ValueError(f"Unsupported algorithm: {algorithm!r}")
+
+    return update_policy
+
 def main(config_path: str):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
@@ -136,12 +147,15 @@ def main(config_path: str):
     )
 
     model = Transformer.from_pretrained(pretrained_model_path, device=device).train()
-    value_head = ValueHead() if config["training"]["algorithm"] in ["reinforce", "ppo"] else None
+    value_head = ValueHead() if config["training"]["algorithm"].lower() in ["reinforce", "ppo"] else None
     print(f"model parameters: {sum(param.numel() for param in model.parameters())}")
-    print(f"value head parameters: {sum(param.numel() for param in value_head.parameters())}")
+    print(f"value head parameters: {sum(param.numel() for param in value_head.parameters()) if value_head else 'None'}")
+    parameters = list(model.parameters())
+    if value_head:
+        parameters.extend(value_head.parameters())
 
     optimizer = MemoryEfficientAdamW(
-        [model.parameters(), value_head.parameters()],
+        parameters,
         lr=config["training"]["learning_rate"],
         weight_decay=config["training"]["weight_decay"],
         betas=config["training"]["betas"],
@@ -151,6 +165,7 @@ def main(config_path: str):
     start_time = time.time()
     ckpt_dir = Path(config["training"]["ckpt_dir"])
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    update_policy = select_update_policy(config["training"]["algorithms"].lower())
 
     for step, batch in enumerate(train_dataloader, start=1):
         episodes = rollout(
